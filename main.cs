@@ -6,7 +6,7 @@ using System.Threading.Tasks.Dataflow;
 
 public static class MyExtensions
 {
-    public static async Task<T?> ReceiveUnlessCompleteAsync<T>(this IReceivableSourceBlock<T> source)
+    public static async Task<T?> ReceiveAsyncIfEver<T>(this IReceivableSourceBlock<T> source)
         where T: struct
     {
         try
@@ -31,25 +31,26 @@ internal static class Program
 
     private static void Main()
     {
-        var chan = new BufferBlock<int>(new DataflowBlockOptions { BoundedCapacity = 4 });
+        var scheduler = TaskScheduler.Default;
+        var pipe = new BufferBlock<int>(new DataflowBlockOptions { BoundedCapacity = 4 });
         Task.Factory.StartNew(async delegate
             {
                 for (int i = 1; i <= 7; ++i)
                 {
-                    await chan.SendAsync(i);
+                    await pipe.SendAsync(i);
                     Console.WriteLine($"produced {i}");
                     StayBusy(0.75);
                 }
-                chan.Complete();
+                pipe.Complete();
                 Console.WriteLine("stop producing");
             },
             CancellationToken.None,
             TaskCreationOptions.None,
-            TaskScheduler.Default).Unwrap();
+            scheduler).Unwrap();
 
         var task = Task.Factory.StartNew(async delegate
             {
-                while ((await chan.ReceiveUnlessCompleteAsync()) is int i)
+                while ((await pipe.ReceiveAsyncIfEver()) is int i)
                 {
                     Console.WriteLine($"consumed {i}");
                     StayBusy(1.25);
@@ -58,7 +59,7 @@ internal static class Program
             },
             CancellationToken.None,
             TaskCreationOptions.None,
-            TaskScheduler.Default).Unwrap();
+            scheduler).Unwrap();
         task.Wait();
         Console.WriteLine("stop waiting");
     }
